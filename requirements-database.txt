@@ -1,0 +1,15 @@
+# Database dependencies for LastMile Processing
+
+# Core database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+alembic>=1.12.0
+
+# Pydantic for data validation
+pydantic>=2.0.0
+
+# UUID support
+uuid>=1.0.0
+
+# Additional utilities
+python-dateutil>=2.8.0

@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # FastAPI Application
+  fast-lastmile-api:
+    build: .
+    container_name: fast-lastmile-api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      # API Configuration
+      - API_TITLE=${API_TITLE:-Fast LastMile API}
+      - API_VERSION=${API_VERSION:-1.0.0}
+      - API_DESCRIPTION=${API_DESCRIPTION:-FastAPI service for processing lastmile routing requests}
+      - DEBUG=${DEBUG:-false}
+      - API_KEY=${API_KEY:-your-super-secret-api-key-here}
+      - HOST=0.0.0.0
+      - PORT=8000
+
+      # Database Configuration - External Database
+      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:adminbvt@host.docker.internal:5433/db-cablo}
+
+      # ORS Configuration
+      - ORS_BASE_URL=${ORS_BASE_URL:-http://host.docker.internal:6080}
+
+      # File Storage Configuration
+      - UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/outputs
+      - MAX_FILE_SIZE_MB=${MAX_FILE_SIZE_MB:-100}
+
+      # Default Processing Parameters
+      - DEFAULT_PULAU=${DEFAULT_PULAU:-Sulawesi}
+      - DEFAULT_GRAPH_PATH=/app/data/sulawesi_graph.graphml
+      - DEFAULT_FO_PATH=/app/data/fo_sulawesi/fo_sulawesi.shp
+      - DEFAULT_POP_PATH=/app/data/pop.csv
+
+      # CORS Configuration
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
+    volumes:
+      - ./uploads:/app/uploads
+      - ./outputs:/app/outputs
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - lastmile-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Add extra_hosts for Windows/Mac to access host services
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Optional: Add OpenRouteService if not running separately
+  # ors:
+  #   image: openrouteservice/openrouteservice:latest
+  #   container_name: ors-server
+  #   ports:
+  #     - "6080:8080"
+  #   environment:
+  #     - BUILD_GRAPHS=True
+  #   volumes:
+  #     - ./ors-data:/home/ors
+  #   networks:
+  #     - lastmile-network
+  #   restart: unless-stopped
+
+networks:
+  lastmile-network:
+    driver: bridge
+
+volumes:
+  uploads:
+  outputs:
+  data:
+  logs:
