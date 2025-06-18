@@ -1,0 +1,4 @@
+PIC Requestor,Email Requestor,Phase,Service Type,Project Type,Material,Product Name,Capacity,Dark Core,Customer,Far End (FE),Lat_FE,Lon_FE,Near End (NE),Lat_NE,Lon_NE,Output,Priority,SUBMIT
+Alvin,alvin.alvian@tower-bersama.com,pre-Project,New Activation,Last Mile,Provide by Customer,Local Loop,1000,,Core Digital Network,Site Tiwoho,1.566993,124.910755,Site Mahawu,1.517335517,124.8510361,"APD, CAPEX, Topology, BOQ",Normal,Submit
+Alvin,alvin.alvian@tower-bersama.com,pre-Project,New Activation,Last Mile,Provide by Customer,Local Loop,1000,,Core Digital Network,Site Kotamobagu,0.707790676,124.317556,Site Ksatria,0.749254305,124.310462,"APD, BOQ, CAPEX, Topology",Normal,Submit
+Alvin,alvin.alvian@tower-bersama.com,pre-Project,New Activation,Last Mile,Provide by Customer,Local Loop,1000,,Core Digital Network,Site Mahawu,1.517324785,124.8510281,Site Bitung,1.50789,125.037624,"APD, BOQ, CAPEX, Topology",Normal,Submit

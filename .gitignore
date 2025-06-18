@@ -110,23 +110,23 @@ dmypy.json
 *.swo
 *~
 
-# FastAPI specific
-uploads/
-outputs/
-logs/
-*.parquet
-*.gpkg
-*.kml
+# # FastAPI specific
+# uploads/
+# outputs/
+# logs/
+# *.parquet
+# *.gpkg
+# *.kml
 
-# Data files
-data/
-*.shp
-*.shx
-*.dbf
-*.prj
-*.cpg
-*.csv
-*.graphml
+# # Data files
+# data/
+# *.shp
+# *.shx
+# *.dbf
+# *.prj
+# *.cpg
+# *.csv
+# *.graphml
 
 # Temporary files
 temp/
