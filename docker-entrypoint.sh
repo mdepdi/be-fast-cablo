@@ -3,6 +3,10 @@ set -e
 
 echo "Starting Fast LastMile API container..."
 
+# Fix volume permissions at runtime
+echo "Fixing volume permissions..."
+chmod -R 777 /app/uploads /app/outputs /app/logs 2>/dev/null || true
+
 # Wait for PostgreSQL to be ready
 if [ -n "$DATABASE_URL" ]; then
     echo "Checking connection to external database..."

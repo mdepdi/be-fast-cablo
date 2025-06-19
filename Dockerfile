@@ -1,4 +1,3 @@
-# Use Python 3.11 slim base image
 FROM python:3.11-slim
 
 # Set environment variables
@@ -37,17 +36,17 @@ COPY ./app /app/app
 COPY ./alembic /app/alembic
 COPY ./alembic.ini /app/alembic.ini
 
+# Copy data files
+COPY ./data /app/data
+
 # Copy entrypoint script
 COPY ./docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
-# Create necessary directories
-RUN mkdir -p /app/uploads /app/outputs /app/data /app/logs
-
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash app \
-    && chown -R app:app /app
-USER app
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/uploads /app/outputs /app/data /app/logs \
+    && chmod -R 777 /app/uploads /app/outputs /app/logs \
+    && chmod -R 755 /app/data
 
 # Expose port
 EXPOSE 8000

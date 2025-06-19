@@ -37,10 +37,10 @@ services:
       # CORS Configuration
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-["http://localhost:3000","http://localhost:8080"]}
     volumes:
-      - ./uploads:/app/uploads
-      - ./outputs:/app/outputs
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - "./uploads:/app/uploads:rw"
+      - "./outputs:/app/outputs:rw"
+      - "./data:/app/data:rw"
+      - "./logs:/app/logs:rw"
     networks:
       - lastmile-network
     restart: unless-stopped
@@ -53,20 +53,6 @@ services:
     # Add extra_hosts for Windows/Mac to access host services
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
-  # Optional: Add OpenRouteService if not running separately
-  # ors:
-  #   image: openrouteservice/openrouteservice:latest
-  #   container_name: ors-server
-  #   ports:
-  #     - "6080:8080"
-  #   environment:
-  #     - BUILD_GRAPHS=True
-  #   volumes:
-  #     - ./ors-data:/home/ors
-  #   networks:
-  #     - lastmile-network
-  #   restart: unless-stopped
 
 networks:
   lastmile-network:

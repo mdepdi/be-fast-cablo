@@ -317,11 +317,19 @@ class LastMileProcessor:
         """Load base data files"""
         try:
             # Load fiber optic data
-            fo_path = f"./data/fo_{pulau.lower()}/fo_{pulau.lower()}.shp"
+            if fo_base_path:
+                fo_path = fo_base_path
+            else:
+                fo_path = f"./data/fo_{pulau.lower()}/fo_{pulau.lower()}.shp"
+
+            print(f"Loading fiber optic data from: {fo_path}")
             fo = gpd.read_file(fo_path)
 
             # Load population data
-            pop_path = "./data/pop.csv"
+            if pop_path is None:
+                pop_path = "./data/pop.csv"
+
+            print(f"Loading population data from: {pop_path}")
             pop = pd.read_csv(pop_path, encoding='latin1')
             pop = gpd.GeoDataFrame(pop, geometry=gpd.points_from_xy(pop.longitude, pop.latitude), crs="EPSG:4326")
 
