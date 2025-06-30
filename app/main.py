@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 import uvicorn
 
 from app.config import settings
-from app.routers import lastmile
+from app.routers import lastmile, spatial_layers
 
 # Create FastAPI application
 app = FastAPI(
@@ -30,6 +30,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(lastmile.router)
+app.include_router(spatial_layers.router)
 
 @app.get("/", include_in_schema=False)
 def root():

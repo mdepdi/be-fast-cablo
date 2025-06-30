@@ -828,16 +828,287 @@ class LastMileProcessor:
             print(f"Warning: Failed to add FE/NE points to KML: {str(e)}")
             pass
 
-    # ==== MAIN PROCESSING FUNCTIONS ====
+    # ==== HYBRID ROUTING OPTIMIZATION FUNCTIONS ====
+    def find_progressive_hybrid_route(self, fe_coords, ne_coords, G, spatial_tree, node_id_list, ors_base_url="http://localhost:6080"):
+        """Find hybrid route using progressive approach - start from FE, extend via NetworkX as far as possible towards NE"""
+
+        transformer_to_3857 = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+        transformer_to_4326 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+
+        fe_3857 = transformer_to_3857.transform(fe_coords[0], fe_coords[1])
+        ne_3857 = transformer_to_3857.transform(ne_coords[0], ne_coords[1])
+
+        # Find nearest nodes from FE
+        fe_candidates = self.find_nearest_node(fe_3857, spatial_tree, node_id_list, k=15)
+
+        best_progressive_route = None
+        min_new_build_distance = float('inf')
+        node_coords = self.extract_node_coordinates(G)
+
+        print(f"  Trying progressive approach from {len(fe_candidates)} FE candidates...")
+
+        for fe_node_id, fe_dist in fe_candidates:
+            if fe_dist > 5000:  # Skip too distant
+                continue
+
+            try:
+                # Get all reachable nodes from this FE node
+                reachable_nodes = {}
+                distances = nx.single_source_dijkstra_path_length(G, fe_node_id, weight='length', cutoff=50000)  # 50km limit
+
+                # Find the reachable node that is closest to NE
+                best_end_node = None
+                min_distance_to_ne = float('inf')
+
+                for reachable_node_id, nx_distance in distances.items():
+                    if reachable_node_id == fe_node_id:
+                        continue
+
+                    reachable_coords_3857 = node_coords[reachable_node_id]
+                    distance_to_ne = ((reachable_coords_3857[0] - ne_3857[0])**2 + (reachable_coords_3857[1] - ne_3857[1])**2)**0.5
+
+                    if distance_to_ne < min_distance_to_ne:
+                        min_distance_to_ne = distance_to_ne
+                        best_end_node = (reachable_node_id, nx_distance, distance_to_ne)
+
+                if best_end_node is None:
+                    continue
+
+                end_node_id, nx_distance, remaining_distance = best_end_node
+
+                # Calculate the actual path distances
+                fe_node_coords_4326 = transformer_to_4326.transform(node_coords[fe_node_id][0], node_coords[fe_node_id][1])
+                end_node_coords_4326 = transformer_to_4326.transform(node_coords[end_node_id][0], node_coords[end_node_id][1])
+
+                # ORS from FE to start of NetworkX
+                ors_fe_to_nx = self.get_shortest_path_ors(fe_coords, fe_node_coords_4326, ors_base_url)
+                if not ors_fe_to_nx['success']:
+                    continue
+
+                # ORS from end of NetworkX to NE
+                ors_nx_to_ne = self.get_shortest_path_ors(end_node_coords_4326, ne_coords, ors_base_url)
+                if not ors_nx_to_ne['success']:
+                    continue
+
+                # Total new-build distance
+                total_new_build = ors_fe_to_nx['total_distance'] + ors_nx_to_ne['total_distance']
+
+                if total_new_build < min_new_build_distance:
+                    # Get the actual NetworkX path
+                    nx_path = self.get_shortest_path_networkx(G, fe_node_id, end_node_id, weight='length')
+
+                    if nx_path['success']:
+                        min_new_build_distance = total_new_build
+                        best_progressive_route = {
+                            'fe_to_nx_ors': ors_fe_to_nx,
+                            'nx_path': nx_path,
+                            'nx_to_ne_ors': ors_nx_to_ne,
+                            'total_new_build_distance': total_new_build,
+                            'total_nx_distance': nx_path['total_distance'],
+                            'fe_node_id': fe_node_id,
+                            'ne_node_id': end_node_id,
+                            'approach': 'progressive'
+                        }
+
+                        print(f"    Progressive route: {total_new_build:.0f}m new-build, {nx_path['total_distance']:.0f}m existing fiber")
+
+            except Exception as e:
+                continue
+
+        return best_progressive_route
+    def find_optimal_hybrid_route(self, fe_coords, ne_coords, G, spatial_tree, node_id_list, fo_buffer, ors_base_url="http://localhost:6080"):
+        """Find optimal hybrid route that minimizes new-build distance"""
+
+        # Convert coordinates to EPSG:3857 for consistent distance calculations
+        transformer_to_3857 = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+        transformer_to_4326 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+
+        fe_3857 = transformer_to_3857.transform(fe_coords[0], fe_coords[1])
+        ne_3857 = transformer_to_3857.transform(ne_coords[0], ne_coords[1])
+
+        # Calculate direct ORS distance first for comparison
+        direct_ors = self.get_shortest_path_ors(fe_coords, ne_coords, ors_base_url)
+        direct_distance = direct_ors['total_distance'] if direct_ors['success'] else float('inf')
+
+        print(f"  Direct ORS distance: {direct_distance:.0f}m")
+
+        # Find multiple nearest nodes with larger search radius
+        fe_candidates = self.find_nearest_node(fe_3857, spatial_tree, node_id_list, k=25)
+        ne_candidates = self.find_nearest_node(ne_3857, spatial_tree, node_id_list, k=25)
+
+        best_route = None
+        min_new_build_distance = float('inf')
+        valid_combinations = 0
+
+        print(f"  Evaluating up to {len(fe_candidates)} x {len(ne_candidates)} node combinations...")
+
+        # Get node coordinates once
+        node_coords = self.extract_node_coordinates(G)
+
+        # Try different combinations of FE and NE candidate nodes
+        for i, (fe_node_id, fe_dist) in enumerate(fe_candidates):
+            # Skip very distant FE candidates (more than 5km)
+            if fe_dist > 5000:
+                continue
+
+            for j, (ne_node_id, ne_dist) in enumerate(ne_candidates):
+                # Skip very distant NE candidates (more than 5km)
+                if ne_dist > 5000:
+                    continue
+
+                # Skip if same node
+                if fe_node_id == ne_node_id:
+                    continue
+
+                try:
+                    # Check if there's a NetworkX path between candidates
+                    nx_path = self.get_shortest_path_networkx(G, fe_node_id, ne_node_id, weight='length')
+
+                    if not nx_path['success']:
+                        continue
+
+                    valid_combinations += 1
+
+                    # Get node coordinates
+                    fe_node_coords_3857 = node_coords[fe_node_id]
+                    ne_node_coords_3857 = node_coords[ne_node_id]
+
+                    # Convert back to 4326 for ORS
+                    fe_node_coords_4326 = transformer_to_4326.transform(fe_node_coords_3857[0], fe_node_coords_3857[1])
+                    ne_node_coords_4326 = transformer_to_4326.transform(ne_node_coords_3857[0], ne_node_coords_3857[1])
+
+                    # Calculate ORS distances (new-build segments)
+                    # FE to first NetworkX node
+                    ors_fe_to_nx = self.get_shortest_path_ors(fe_coords, fe_node_coords_4326, ors_base_url)
+                    if not ors_fe_to_nx['success']:
+                        continue
+
+                    # Last NetworkX node to NE
+                    ors_nx_to_ne = self.get_shortest_path_ors(ne_node_coords_4326, ne_coords, ors_base_url)
+                    if not ors_nx_to_ne['success']:
+                        continue
+
+                    # Calculate total new-build distance
+                    total_new_build = ors_fe_to_nx['total_distance'] + ors_nx_to_ne['total_distance']
+
+                    # Only consider if significantly better than direct route
+                    improvement_threshold = 0.95  # Must be at least 5% better
+                    if total_new_build < min_new_build_distance and total_new_build < (direct_distance * improvement_threshold):
+                        min_new_build_distance = total_new_build
+                        improvement_pct = ((direct_distance - total_new_build) / direct_distance) * 100
+
+                        best_route = {
+                            'fe_to_nx_ors': ors_fe_to_nx,
+                            'nx_path': nx_path,
+                            'nx_to_ne_ors': ors_nx_to_ne,
+                            'total_new_build_distance': total_new_build,
+                            'total_nx_distance': nx_path['total_distance'],
+                            'fe_node_id': fe_node_id,
+                            'ne_node_id': ne_node_id,
+                            'improvement_pct': improvement_pct,
+                            'direct_comparison': direct_distance
+                        }
+
+                        print(f"    Found better hybrid route: {total_new_build:.0f}m vs {direct_distance:.0f}m ({improvement_pct:.1f}% improvement)")
+
+                except Exception as e:
+                    continue
+
+        print(f"  Evaluated {valid_combinations} valid NetworkX connections")
+
+        # Use best hybrid route if found and significantly better, otherwise use direct ORS
+        if best_route is not None:
+            print(f"  Selected hybrid route with {best_route['improvement_pct']:.1f}% improvement")
+            return best_route
+        else:
+            print("  No significant improvement found with hybrid routing, using direct ORS")
+            if direct_ors['success']:
+                return {
+                    'direct_ors': direct_ors,
+                    'total_new_build_distance': direct_ors['total_distance'],
+                    'total_nx_distance': 0,
+                    'is_direct': True
+                }
+            else:
+                return None
+
+    def create_hybrid_route_gdf(self, hybrid_route, row):
+        """Create GeoDataFrame from hybrid route result"""
+        segments = []
+
+        if hybrid_route.get('is_direct', False):
+            # Direct ORS route
+            segment = {
+                'type': 'ors',
+                'total_distance': hybrid_route['direct_ors']['total_distance'],
+                'geometry': hybrid_route['direct_ors']['ors_original_geometry'],
+                'request_id': row.get('request_id', 0),
+                'segment_id': 0
+            }
+            segments.append(segment)
+        else:
+            # Hybrid route with multiple segments
+            segment_id = 0
+
+            # FE to NetworkX segment (ORS)
+            if hybrid_route['fe_to_nx_ors']['success']:
+                segment = {
+                    'type': 'ors',
+                    'total_distance': hybrid_route['fe_to_nx_ors']['total_distance'],
+                    'geometry': hybrid_route['fe_to_nx_ors']['ors_original_geometry'],
+                    'request_id': row.get('request_id', 0),
+                    'segment_id': segment_id
+                }
+                segments.append(segment)
+                segment_id += 1
+
+            # NetworkX segment (existing fiber)
+            if hybrid_route['nx_path']['success'] and hybrid_route['nx_path']['geometry'] is not None:
+                # Convert NetworkX geometry to EPSG:4326
+                transformer = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
+                nx_geom = transform(lambda x, y, z=None: transformer.transform(x, y), hybrid_route['nx_path']['geometry'])
+
+                segment = {
+                    'type': 'nx',
+                    'total_distance': hybrid_route['nx_path']['total_distance'],
+                    'geometry': nx_geom,
+                    'request_id': row.get('request_id', 0),
+                    'segment_id': segment_id
+                }
+                segments.append(segment)
+                segment_id += 1
+
+            # NetworkX to NE segment (ORS)
+            if hybrid_route['nx_to_ne_ors']['success']:
+                segment = {
+                    'type': 'ors',
+                    'total_distance': hybrid_route['nx_to_ne_ors']['total_distance'],
+                    'geometry': hybrid_route['nx_to_ne_ors']['ors_original_geometry'],
+                    'request_id': row.get('request_id', 0),
+                    'segment_id': segment_id
+                }
+                segments.append(segment)
+
+        # Create GeoDataFrame
+        if segments:
+            gdf = gpd.GeoDataFrame(segments, geometry='geometry', crs='EPSG:4326')
+
+            # Add request information
+            for col in ['Far End (FE)', 'Near End (NE)', 'Lat_FE', 'Lon_FE', 'Lat_NE', 'Lon_NE']:
+                if col in row.index:
+                    gdf[col] = row[col]
+
+            return gdf
+
+        return gpd.GeoDataFrame()
+
+    # ==== MAIN PROCESSING FUNCTIONS (UPDATED) ====
     def process_single_request(self, row, index, G, fo_buffer, pop, spatial_tree, node_id_list, ors_base_url="http://localhost:6080", directions_url=None,
                               fe_name_column='Far End (FE)', ne_name_column='Near End (NE)',
                               lat_fe_column='Lat_FE', lon_fe_column='Lon_FE',
                               lat_ne_column='Lat_NE', lon_ne_column='Lon_NE'):
-        """Process a single lastmile request with full processing pipeline"""
+        """Process a single lastmile request with optimized hybrid routing approach"""
         print(f"Processing request {index + 1}: {row[fe_name_column]} -> {row[ne_name_column]}")
-
-        if directions_url is None:
-            directions_url = f"{ors_base_url}/ors/v2/directions/driving-car"
 
         try:
             # Step 1: Snap endpoints to road
@@ -845,38 +1116,52 @@ class LastMileProcessor:
                                                                lat_fe_column=lat_fe_column, lon_fe_column=lon_fe_column,
                                                                lat_ne_column=lat_ne_column, lon_ne_column=lon_ne_column)
 
-            # Step 2: Get best route
-            best_route = self.get_best_route(FE_snapped, NE_snapped, row[fe_name_column], row[ne_name_column], fo_buffer, directions_url)
+            # Step 2: Find optimal hybrid route using multiple approaches
+            print("  Trying standard hybrid approach...")
+            hybrid_route_standard = self.find_optimal_hybrid_route(FE_snapped, NE_snapped, G, spatial_tree, node_id_list, fo_buffer, ors_base_url)
 
-            # Step 3: Process overlapped and non-overlapped segments
-            overlapped_line = self.process_overlapped_segments(best_route, fo_buffer)
-            not_overlapped_line = self.process_non_overlapped_segments(best_route, overlapped_line)
+            print("  Trying progressive hybrid approach...")
+            hybrid_route_progressive = self.find_progressive_hybrid_route(FE_snapped, NE_snapped, G, spatial_tree, node_id_list, ors_base_url)
 
-            # Step 4: Extract segment endpoints
-            first_last_point = self.extract_segment_endpoints(overlapped_line, not_overlapped_line)
+            # Select the best route from both approaches
+            hybrid_route = None
+            if hybrid_route_standard and hybrid_route_progressive:
+                if hybrid_route_standard['total_new_build_distance'] <= hybrid_route_progressive['total_new_build_distance']:
+                    hybrid_route = hybrid_route_standard
+                    print(f"  Selected standard approach: {hybrid_route_standard['total_new_build_distance']:.0f}m vs {hybrid_route_progressive['total_new_build_distance']:.0f}m")
+                else:
+                    hybrid_route = hybrid_route_progressive
+                    print(f"  Selected progressive approach: {hybrid_route_progressive['total_new_build_distance']:.0f}m vs {hybrid_route_standard['total_new_build_distance']:.0f}m")
+            elif hybrid_route_standard:
+                hybrid_route = hybrid_route_standard
+                print("  Using standard approach (progressive failed)")
+            elif hybrid_route_progressive:
+                hybrid_route = hybrid_route_progressive
+                print("  Using progressive approach (standard failed)")
 
-            # Step 5: Calculate distances and find nodes
-            first_last_point = self.calculate_distances_and_nodes(first_last_point, best_route, spatial_tree, node_id_list)
+            if hybrid_route is None:
+                print(f"  -> No route found for request {index + 1}")
+                return None
 
-            # Step 6: Generate paths for segments
-            final_path = self.generate_segment_paths(first_last_point, G, ors_base_url=ors_base_url)
+            # Step 3: Create GeoDataFrame from hybrid route
+            result_gdf = self.create_hybrid_route_gdf(hybrid_route, row)
 
-            # Step 7: Connect path segments
-            merged_gdf = self.connect_path_segments(final_path)
+            if result_gdf.empty:
+                print(f"  -> Failed to create route GDF for request {index + 1}")
+                return None
 
-            # Step 8: Add request information to the result
-            if not merged_gdf.empty:
-                merged_gdf['request_id'] = row.get('request_id', index + 1)
-                merged_gdf[fe_name_column] = row[fe_name_column]
-                merged_gdf[ne_name_column] = row[ne_name_column]
-                merged_gdf[lat_fe_column] = row[lat_fe_column]
-                merged_gdf[lon_fe_column] = row[lon_fe_column]
-                merged_gdf[lat_ne_column] = row[lat_ne_column]
-                merged_gdf[lon_ne_column] = row[lon_ne_column]
-                merged_gdf['segment_id'] = range(len(merged_gdf))
+            # Step 4: Print optimization results
+            if hybrid_route.get('is_direct', False):
+                print(f"  -> Direct route: {hybrid_route['total_new_build_distance']:.0f}m new-build")
+            else:
+                approach_type = hybrid_route.get('approach', 'standard')
+                if 'improvement_pct' in hybrid_route:
+                    print(f"  -> {approach_type.title()} hybrid route: {hybrid_route['total_new_build_distance']:.0f}m new-build ({hybrid_route['improvement_pct']:.1f}% improvement), {hybrid_route['total_nx_distance']:.0f}m existing fiber")
+                else:
+                    print(f"  -> {approach_type.title()} hybrid route: {hybrid_route['total_new_build_distance']:.0f}m new-build, {hybrid_route['total_nx_distance']:.0f}m existing fiber")
 
             print(f"  -> Request {index + 1} completed successfully")
-            return merged_gdf
+            return result_gdf
 
         except Exception as e:
             print(f"  -> Error processing request: {str(e)}")

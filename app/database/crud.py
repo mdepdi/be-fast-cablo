@@ -8,12 +8,15 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 
-from .models import LastMileProcessingResult
+from .models import LastMileProcessingResult, SpatialLayer
 from .schemas import (
     LastMileProcessingResultCreate,
     LastMileProcessingResultUpdate,
     ProcessingStatus,
-    ProcessingResultQuery
+    ProcessingResultQuery,
+    SpatialLayerCreate,
+    SpatialLayerUpdate,
+    LayerProcessingStatus
 )
 
 
@@ -164,3 +167,80 @@ class LastMileProcessingResultCRUD:
 
 # Create instances for easy import
 processing_result_crud = LastMileProcessingResultCRUD()
+
+# Spatial Layer CRUD Operations
+class SpatialLayerCRUD:
+    """CRUD operations for SpatialLayer"""
+
+    @staticmethod
+    def create(db: Session, layer_data: SpatialLayerCreate) -> SpatialLayer:
+        """Create a new spatial layer"""
+        db_layer = SpatialLayer(**layer_data.model_dump())
+        db.add(db_layer)
+        db.commit()
+        db.refresh(db_layer)
+        return db_layer
+
+    @staticmethod
+    def get_by_id(db: Session, layer_id: str) -> Optional[SpatialLayer]:
+        """Get spatial layer by ID"""
+        return db.query(SpatialLayer).filter(SpatialLayer.id == layer_id).first()
+
+    @staticmethod
+    def get_by_layer_name(db: Session, layer_name: str) -> Optional[SpatialLayer]:
+        """Get spatial layer by layer name"""
+        return db.query(SpatialLayer).filter(SpatialLayer.layer_name == layer_name).first()
+
+    @staticmethod
+    def get_all(db: Session, skip: int = 0, limit: int = 100) -> List[SpatialLayer]:
+        """Get all spatial layers with pagination"""
+        return db.query(SpatialLayer).offset(skip).limit(limit).all()
+
+    @staticmethod
+    def get_ready_layers(db: Session) -> List[SpatialLayer]:
+        """Get all ready spatial layers for map display"""
+        return db.query(SpatialLayer).filter(
+            SpatialLayer.processing_status == LayerProcessingStatus.READY
+        ).all()
+
+    @staticmethod
+    def update(db: Session, layer_id: str, layer_update) -> Optional[SpatialLayer]:
+        """Update spatial layer"""
+        db_layer = db.query(SpatialLayer).filter(SpatialLayer.id == layer_id).first()
+        if db_layer:
+            # Handle both Pydantic models and dictionaries
+            if hasattr(layer_update, 'model_dump'):
+                update_data = layer_update.model_dump(exclude_unset=True)
+            else:
+                update_data = layer_update
+
+            for field, value in update_data.items():
+                if hasattr(db_layer, field):
+                    setattr(db_layer, field, value)
+            db.commit()
+            db.refresh(db_layer)
+        return db_layer
+
+    @staticmethod
+    def delete(db: Session, layer_id: str) -> bool:
+        """Delete spatial layer"""
+        db_layer = db.query(SpatialLayer).filter(SpatialLayer.id == layer_id).first()
+        if db_layer:
+            db.delete(db_layer)
+            db.commit()
+            return True
+        return False
+
+    @staticmethod
+    def count(db: Session) -> int:
+        """Get total count of spatial layers"""
+        return db.query(SpatialLayer).count()
+
+    @staticmethod
+    def get_by_status(db: Session, status: LayerProcessingStatus) -> List[SpatialLayer]:
+        """Get spatial layers by processing status"""
+        return db.query(SpatialLayer).filter(SpatialLayer.processing_status == status).all()
+
+
+# Create instance for easy access
+spatial_layer_crud = SpatialLayerCRUD()

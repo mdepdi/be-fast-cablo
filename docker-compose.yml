@@ -54,6 +54,14 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  martin:
+    image: ghcr.io/maplibre/martin:v0.13.0
+    restart: unless-stopped
+    ports:
+      - "4040:3000"
+    env_file:
+      - .env
+
 networks:
   lastmile-network:
     driver: bridge

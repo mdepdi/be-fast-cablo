@@ -81,7 +81,7 @@ def post_last_mile_request(
     graph_path: Optional[str] = Form(None, description="Path to GraphML file"),
     fo_path: Optional[str] = Form(None, description="Path to fiber optic shapefile"),
     pop_path: Optional[str] = Form(None, description="Path to population CSV file"),
-    ors_base_url: Optional[str] = Form("http://localhost:6080", description="ORS base URL"),
+    ors_base_url: Optional[str] = Form(settings.ORS_BASE_URL, description="ORS base URL"),
     save_to_database: Optional[bool] = Form(True, description="Save results to database"),
     api_key: str = Depends(verify_api_key)
 ):
@@ -183,6 +183,9 @@ def post_last_mile_request(
                 fo_path = settings.DEFAULT_FO_PATH
             if not pop_path:
                 pop_path = settings.DEFAULT_POP_PATH
+
+            if not ors_base_url:
+                ors_base_url = settings.ORS_BASE_URL
 
             # Check ORS connection (optional warning)
             if not check_ors_connection(ors_base_url):

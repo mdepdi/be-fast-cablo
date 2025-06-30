@@ -1,0 +1,55 @@
+{
+  "request_id": "1691e7e6-195b-4c3c-8674-436aea2355ed",
+  "processing_timestamp": "2025-06-25T06:08:44.870065",
+  "total_requests": 3,
+  "processed_requests": 3,
+  "total_segments_before_dissolve": 6,
+  "total_groups_after_dissolve": 5,
+  "total_distance_m": 68270.99,
+  "overlapped_distance_m": 20776.34,
+  "new_build_distance_m": 47494.65,
+  "overlapped_percentage": 30.43,
+  "new_build_percentage": 69.57,
+  "dissolved_groups": [
+    {
+      "label": "overlapped",
+      "type": "nx",
+      "fe_name": "Site Kotamobagu",
+      "ne_name": "Site Ksatria",
+      "total_distance_m": 2687.06,
+      "segment_count": 1
+    },
+    {
+      "label": "overlapped",
+      "type": "nx",
+      "fe_name": "Site Tiwoho",
+      "ne_name": "Site Mahawu",
+      "total_distance_m": 18089.28,
+      "segment_count": 1
+    },
+    {
+      "label": "new-build",
+      "type": "ors",
+      "fe_name": "Site Kotamobagu",
+      "ne_name": "Site Ksatria",
+      "total_distance_m": 7077.89,
+      "segment_count": 1
+    },
+    {
+      "label": "new-build",
+      "type": "ors",
+      "fe_name": "Site Mahawu",
+      "ne_name": "Site Bitung",
+      "total_distance_m": 32567.64,
+      "segment_count": 2
+    },
+    {
+      "label": "new-build",
+      "type": "ors",
+      "fe_name": "Site Tiwoho",
+      "ne_name": "Site Mahawu",
+      "total_distance_m": 7849.12,
+      "segment_count": 1
+    }
+  ]
+}

@@ -17,6 +17,22 @@ class ProcessingStatus(str, Enum):
     FAILED = "failed"
 
 
+class LayerProcessingStatus(str, Enum):
+    """Layer processing status enumeration"""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    READY = "ready"
+    ERROR = "error"
+
+
+class LayerFileType(str, Enum):
+    """Supported file types for spatial layers"""
+    PARQUET = "parquet"
+    GEOPARQUET = "geoparquet"
+    GEOJSON = "geojson"
+    SHAPEFILE = "shapefile"
+
+
 # Base schemas
 class LastMileProcessingResultBase(BaseModel):
     """Base schema for LastMile Processing Result"""
@@ -138,3 +154,92 @@ class ProcessingResultList(BaseModel):
     offset: int
     has_next: bool
     has_prev: bool
+
+
+# Spatial Layer Schemas
+class SpatialLayerBase(BaseModel):
+    """Base schema for Spatial Layer"""
+    layer_name: str = Field(..., description="Unique layer name (also table name)", min_length=1, max_length=255)
+    display_name: str = Field(..., description="Human-readable display name", min_length=1, max_length=255)
+    description: Optional[str] = Field(None, description="Layer description")
+    file_type: LayerFileType = Field(..., description="File type")
+    geometry_type: Optional[str] = Field(None, description="Geometry type: Point, LineString, Polygon, etc.")
+    srid: int = Field(4326, description="Spatial Reference System Identifier")
+    bbox: Optional[List[float]] = Field(None, description="Bounding box coordinates [minx, miny, maxx, maxy]")
+    maplibre_style: Dict[str, Any] = Field(default_factory=dict, description="MapLibre GL style specification")
+    default_visibility: bool = Field(True, description="Default visibility state")
+    min_zoom: Optional[int] = Field(0, ge=0, le=24, description="Minimum zoom level")
+    max_zoom: Optional[int] = Field(22, ge=0, le=24, description="Maximum zoom level")
+    created_by: Optional[str] = Field(None, description="User who uploaded the layer")
+    metadata_info: Optional[Dict[str, Any]] = Field(None, description="Additional layer metadata")
+
+
+class SpatialLayerCreate(SpatialLayerBase):
+    """Schema for creating a new spatial layer"""
+    original_filename: str = Field(..., description="Original uploaded file name")
+    file_size_bytes: Optional[int] = Field(None, description="File size in bytes")
+
+
+class SpatialLayerUpdate(BaseModel):
+    """Schema for updating a spatial layer"""
+    display_name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    maplibre_style: Optional[Dict[str, Any]] = None
+    default_visibility: Optional[bool] = None
+    min_zoom: Optional[int] = Field(None, ge=0, le=24)
+    max_zoom: Optional[int] = Field(None, ge=0, le=24)
+    processing_status: Optional[LayerProcessingStatus] = None
+    error_message: Optional[str] = None
+    martin_layer_id: Optional[str] = None
+    martin_url: Optional[str] = None
+    feature_count: Optional[int] = None
+    bbox: Optional[List[float]] = None
+    geometry_type: Optional[str] = None
+    metadata_info: Optional[Dict[str, Any]] = None
+
+
+class SpatialLayerResponse(SpatialLayerBase):
+    """Schema for spatial layer response"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    original_filename: str
+    file_size_bytes: Optional[int] = None
+    feature_count: Optional[int] = None
+    martin_layer_id: Optional[str] = None
+    martin_url: Optional[str] = None
+    processing_status: LayerProcessingStatus
+    error_message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class SpatialLayerListItem(BaseModel):
+    """Schema for spatial layer list item (minimal info)"""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    layer_name: str
+    display_name: str
+    geometry_type: Optional[str] = None
+    feature_count: Optional[int] = None
+    processing_status: LayerProcessingStatus
+    default_visibility: bool
+    created_at: datetime
+
+
+class FileUploadRequest(BaseModel):
+    """Schema for file upload request"""
+    display_name: str = Field(..., description="Human-readable display name")
+    description: Optional[str] = Field(None, description="Layer description")
+    srid: int = Field(4326, description="Target SRID for the layer")
+    maplibre_style: Optional[Dict[str, Any]] = Field(None, description="Initial MapLibre style")
+
+
+class FileUploadResponse(BaseModel):
+    """Schema for file upload response"""
+    success: bool
+    message: str
+    layer_id: Optional[UUID] = None
+    layer_name: Optional[str] = None
+    processing_status: Optional[LayerProcessingStatus] = None
