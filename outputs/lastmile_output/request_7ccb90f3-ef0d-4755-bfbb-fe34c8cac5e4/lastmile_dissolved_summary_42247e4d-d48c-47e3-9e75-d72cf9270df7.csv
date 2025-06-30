@@ -1,7 +1,0 @@
-type,label,Far End (FE),Near End (NE),total_distance_m,segment_count,request_id,Lat_FE,Lon_FE,Lat_NE,Lon_NE
-nx,overlapped,Site Kotamobagu,Site Ksatria,7614.495247701887,1,2,0.707790676,124.317556,0.749254305,124.310462
-nx,overlapped,Site Mahawu,Site Bitung,24014.157204191226,1,3,1.517324785,124.8510281,1.50789,125.037624
-nx,overlapped,Site Tiwoho,Site Mahawu,6800.29245931762,2,1,1.566993,124.910755,1.517335517,124.8510361
-ors,new-build,Site Kotamobagu,Site Ksatria,1374.657719584737,8,2,0.707790676,124.317556,0.749254305,124.310462
-ors,new-build,Site Mahawu,Site Bitung,21266.134209936008,10,3,1.517324785,124.8510281,1.50789,125.037624
-ors,new-build,Site Tiwoho,Site Mahawu,9828.054419464066,7,1,1.566993,124.910755,1.517335517,124.8510361
